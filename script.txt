@@ -1,0 +1,24 @@
+setInterval(() => {
+    $.ajax({
+        type: "post",
+        url: "Ajax/DevicesAjax.asmx/GetTracking",
+        contentType: "application/json",
+        data: "{DeviceID:" + DeviceID + ",TimeZone:'" + TimeZone + "'}",
+        dataType: "json",
+        success: function (result) {
+            if (result.d != "" && result.d != "{}") {
+                var json = eval("(" + result.d + ")");
+                $.ajax({
+                    type: "POST",
+                    url: "http://localhost:8443/location",
+                    contentType: "application/json",
+                    data: JSON.stringify({ Latitude:  parseFloat(json.latitude), Longitude: parseFloat(json.longitude), LastCommunication: json.lastcommunication, Status: json.status, SN: json.sn }),
+                    dataType: "json",
+                    success: function (result) {
+                        
+                    }
+                });
+            }
+        }
+    });
+  }, 10000);
