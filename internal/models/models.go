@@ -17,3 +17,7 @@ type OutgoingResponse struct {
 	SerialNumber      string  `json:"serialNumber"`
 	LastCommunication string  `json:"lastCommunication"`
 }
+
+type DeviceToken struct {
+	DeviceToken string `firestore:"deviceToken"`
+}

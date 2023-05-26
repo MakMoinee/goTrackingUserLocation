@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/MakMoinee/go-mith/pkg/goserve"
 	"github.com/MakMoinee/go-mith/pkg/response"
@@ -89,10 +90,15 @@ func (s *service) PostLocation(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, errorBuilder)
 	}
 
-	if val, exist := common.LOCATION_MAP[location.SerialNumber]; exist {
-		if location.Status != val.Status {
+	if strings.EqualFold(location.Status, "Stop") {
+		common.COUNTDOWN--
+		if common.COUNTDOWN < 0 {
+			common.COUNTDOWN = 1
+			s.FirebaseService.SendMessage(location)
 			s.updateFirebase(w, location)
 		}
+	} else {
+		s.updateFirebase(w, location)
 	}
 	common.LOCATION_MAP[location.SerialNumber] = location
 	successMsg := response.NewSuccessBuilder("Successful")
