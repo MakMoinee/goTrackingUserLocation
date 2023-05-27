@@ -81,11 +81,11 @@ func (s *service) WriteToDb(location models.Location) error {
 	return err
 }
 
-func (s *service) retrieveDeviceToken(deviceID string) string {
-	deviceToken := ""
+func (s *service) retrieveDeviceToken(deviceID string) []string {
+	deviceToken := []string{}
 	s.openFirestore()
-	docRef := s.FirestoreClient.Collection("deviceTokens").Doc("KkKENNeNbCT4NMoawCCo")
-	deviceTokenStruct := models.DeviceToken{}
+	docRef := s.FirestoreClient.Collection("deviceTokens").Doc(deviceID)
+	tmpMap := make(map[string]interface{})
 	defer s.FirestoreClient.Close()
 
 	snap, err := docRef.Get(context.Background())
@@ -98,11 +98,19 @@ func (s *service) retrieveDeviceToken(deviceID string) string {
 	}
 
 	// Unmarshal the snapshot data into the user struct
-	if err := snap.DataTo(&deviceTokenStruct); err != nil {
+	if err := snap.DataTo(&tmpMap); err != nil {
 		log.Fatalf("Failed to unmarshal document data: %v", err)
 	}
 
-	deviceToken = deviceTokenStruct.DeviceToken
+	if tmpMap["deviceTokens"] != nil {
+		for _, rawData := range tmpMap["deviceTokens"].([]interface{}) {
+			if rawData.(map[string]interface{})["deviceToken"] != nil {
+				tmpStr := rawData.(map[string]interface{})["deviceToken"].(string)
+				deviceToken = append(deviceToken, tmpStr)
+			}
+
+		}
+	}
 
 	return deviceToken
 }
@@ -110,20 +118,25 @@ func (s *service) retrieveDeviceToken(deviceID string) string {
 func (s *service) SendMessage(location models.Location) error {
 	log.Println("SendMessage() invoked ...")
 	deviceToken := s.retrieveDeviceToken(location.SerialNumber)
-	message := &messaging.Message{
-		Notification: &messaging.Notification{
-			Title: "Device Notification",
-			Body:  fmt.Sprintf("Person in Device: %s might be in danger, Please open this notification to track", location.SerialNumber),
-		},
-		Token: deviceToken, // Replace with the device token of the target Android device
+	var errs error
+	for _, token := range deviceToken {
+		message := &messaging.Message{
+			Notification: &messaging.Notification{
+				Title: "Device Notification",
+				Body:  fmt.Sprintf("Person in Device: %s might be in danger, Please open this notification to track", location.SerialNumber),
+			},
+			Token: token, // Replace with the device token of the target Android device
+		}
+
+		data, err := s.MessageClient.Send(context.Background(), message)
+		if err != nil {
+			log.Fatalf("(4) Failed to send message: %v", err)
+			errs = err
+			break
+		}
+
+		log.Println("Successfully Sent Message: ", data)
 	}
 
-	data, err := s.MessageClient.Send(context.Background(), message)
-	if err != nil {
-		log.Fatalf("(4) Failed to send message: %v", err)
-	}
-
-	log.Println("Successfully Sent Message: ", data)
-
-	return err
+	return errs
 }
