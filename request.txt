@@ -1,0 +1,7 @@
+{
+    "Latitude": 14.42402,
+    "Longitude": 120.91461,
+    "Status": "Stop",
+    "SN": "16055632916",
+    "LastCommunication": "2023/5/25 3:49:44"
+}

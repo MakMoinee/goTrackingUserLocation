@@ -1,1 +1,7 @@
 SERVER_PORT: ":8443"
+
+#EMAIL_CONFIGURATIONS
+SMTP_SERVER: smtp.gmail.com
+EMAIL_ADDRESS: trackinguserapp.ph@gmail.com
+EMAIL_PASS: pnqhstmvgyibpbgz
+SMTP_PORT: 465

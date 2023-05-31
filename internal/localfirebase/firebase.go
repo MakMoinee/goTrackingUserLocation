@@ -6,6 +6,7 @@ import (
 	"goTrackingUserLocation/internal/common"
 	"goTrackingUserLocation/internal/models"
 	"log"
+	"net/smtp"
 
 	"cloud.google.com/go/firestore"
 	firebase "firebase.google.com/go/v4"
@@ -81,6 +82,40 @@ func (s *service) WriteToDb(location models.Location) error {
 	return err
 }
 
+// func (s *service) retrieveUser(deviceID string) []string {
+// 	deviceToken := []string{}
+// 	s.openFirestore()
+// 	docRef := s.FirestoreClient.Collection("users").WhereEq
+// 	tmpMap := make(map[string]interface{})
+// 	defer s.FirestoreClient.Close()
+
+// 	snap, err := docRef.Get(context.Background())
+// 	if err != nil {
+// 		log.Fatalf("(5) Failed to get firestore data: %v", err)
+// 	}
+
+// 	if err != nil {
+// 		log.Fatalf("Failed to get document: %v", err)
+// 	}
+
+// 	// Unmarshal the snapshot data into the user struct
+// 	if err := snap.DataTo(&tmpMap); err != nil {
+// 		log.Fatalf("Failed to unmarshal document data: %v", err)
+// 	}
+
+// 	if tmpMap["deviceTokens"] != nil {
+// 		for _, rawData := range tmpMap["deviceTokens"].([]interface{}) {
+// 			if rawData.(map[string]interface{})["deviceToken"] != nil {
+// 				tmpStr := rawData.(map[string]interface{})["deviceToken"].(string)
+// 				deviceToken = append(deviceToken, tmpStr)
+// 			}
+
+// 		}
+// 	}
+
+// 	return deviceToken
+// }
+
 func (s *service) retrieveDeviceToken(deviceID string) []string {
 	deviceToken := []string{}
 	s.openFirestore()
@@ -90,11 +125,13 @@ func (s *service) retrieveDeviceToken(deviceID string) []string {
 
 	snap, err := docRef.Get(context.Background())
 	if err != nil {
-		log.Fatalf("(5) Failed to get firestore data: %v", err)
+		log.Println(fmt.Sprintf("(5) Failed to get firestore data: %v", err))
+		return deviceToken
 	}
 
 	if err != nil {
-		log.Fatalf("Failed to get document: %v", err)
+		log.Println(fmt.Sprintf("(6) Failed to get firestore data: %v", err))
+		return deviceToken
 	}
 
 	// Unmarshal the snapshot data into the user struct
@@ -120,6 +157,9 @@ func (s *service) SendMessage(location models.Location) error {
 	deviceToken := s.retrieveDeviceToken(location.SerialNumber)
 	var errs error
 	for _, token := range deviceToken {
+		if token == "" {
+			continue
+		}
 		message := &messaging.Message{
 			Notification: &messaging.Notification{
 				Title: "Device Notification",
@@ -139,4 +179,26 @@ func (s *service) SendMessage(location models.Location) error {
 	}
 
 	return errs
+}
+
+// createEmail creates a new email message.
+func createEmail(to, subject, body string) []byte {
+	message := fmt.Sprintf("To: %s\r\n"+
+		"Subject: %s\r\n"+
+		"\r\n"+
+		"%s\r\n", to, subject, body)
+
+	return []byte(message)
+}
+
+// sendEmail sends the email using SMTP and the provided app password.
+func sendEmail(senderEmail, appPassword string, email []byte) error {
+	auth := smtp.PlainAuth("", senderEmail, appPassword, "smtp.gmail.com")
+
+	err := smtp.SendMail("smtp.gmail.com:587", auth, senderEmail, []string{senderEmail}, email)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
