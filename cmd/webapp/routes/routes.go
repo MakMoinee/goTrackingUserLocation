@@ -3,6 +3,7 @@ package routes
 import (
 	"encoding/json"
 	"goTrackingUserLocation/internal/common"
+	"goTrackingUserLocation/internal/email"
 	"goTrackingUserLocation/internal/localfirebase"
 	"goTrackingUserLocation/internal/models"
 	"io"
@@ -17,6 +18,7 @@ import (
 
 type service struct {
 	FirebaseService localfirebase.FirebaseIntf
+	EmailService    email.EmailIntf
 }
 
 type RoutesIntf interface {
@@ -27,6 +29,7 @@ type RoutesIntf interface {
 func newRoutes() RoutesIntf {
 	svc := service{}
 	svc.FirebaseService = localfirebase.NewFirebaseApp()
+	svc.EmailService = email.NewEmailService(common.EMAIL_PORT, common.EMAIL_HOST, common.EMAIL_ADDRESS, common.EMAIL_APP_PASS)
 	return &svc
 }
 
@@ -94,7 +97,23 @@ func (s *service) PostLocation(w http.ResponseWriter, r *http.Request) {
 		common.COUNTDOWN--
 		if common.COUNTDOWN < 0 {
 			common.COUNTDOWN = 1
-			s.FirebaseService.SendMessage(location)
+			err := s.FirebaseService.SendMessage(location)
+			if err == nil {
+				dependents := s.FirebaseService.GetUpdatedDependents()
+				if len(dependents) > 0 {
+					for _, dependent := range dependents {
+						go func(dep models.Dependents) {
+							isSend, err := s.EmailService.SendEmail(dep.DependentEmail, common.EMAIL_SUBJECT, "You're registered as one of the dependents")
+							if err != nil {
+								log.Println("Deoendent email: ", dep.DependentEmail)
+								log.Println("Email error: ", err)
+							}
+
+							log.Println("Email Sent: ", isSend)
+						}(dependent)
+					}
+				}
+			}
 			s.updateFirebase(w, location)
 		}
 	} else {

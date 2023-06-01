@@ -20,4 +20,12 @@ type OutgoingResponse struct {
 
 type DeviceToken struct {
 	DeviceToken string `firestore:"deviceToken"`
+	UserID      string `firesotre:"userID"`
+}
+
+type Dependents struct {
+	DependentEmail       string
+	DependentName        string
+	DependentPhoneNumber string
+	UserID               string
 }

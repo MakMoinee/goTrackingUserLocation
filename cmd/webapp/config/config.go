@@ -20,4 +20,9 @@ func Set() {
 	}
 	Registry = viper.GetViper()
 	common.SERVER_PORT = Registry.GetString("SERVER_PORT")
+	common.EMAIL_ADDRESS = Registry.GetString("EMAIL_ADDRESS")
+	common.EMAIL_PORT = Registry.GetInt("EMAIL_PORT")
+	common.EMAIL_APP_PASS = Registry.GetString("EMAIL_APP_PASS")
+	common.EMAIL_HOST = Registry.GetString("EMAIL_HOST")
+	common.EMAIL_SUBJECT = Registry.GetString("EMAIL_SUBJECT")
 }

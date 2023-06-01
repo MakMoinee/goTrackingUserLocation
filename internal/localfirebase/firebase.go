@@ -6,7 +6,6 @@ import (
 	"goTrackingUserLocation/internal/common"
 	"goTrackingUserLocation/internal/models"
 	"log"
-	"net/smtp"
 
 	"cloud.google.com/go/firestore"
 	firebase "firebase.google.com/go/v4"
@@ -17,6 +16,7 @@ import (
 
 type FirebaseIntf interface {
 	Setup()
+	GetUpdatedDependents() []models.Dependents
 	WriteToDb(models.Location) error
 	SendMessage(models.Location) error
 }
@@ -26,6 +26,7 @@ type service struct {
 	DBClient        *db.Client
 	MessageClient   *messaging.Client
 	FirestoreClient *firestore.Client
+	Dependents      []models.Dependents
 }
 
 func NewFirebaseApp() FirebaseIntf {
@@ -56,6 +57,7 @@ func (s *service) Setup() {
 		log.Fatalf("(3) Failed to access messaging: %v", err)
 	}
 	s.MessageClient = messenger
+	s.Dependents = []models.Dependents{}
 
 }
 
@@ -82,42 +84,49 @@ func (s *service) WriteToDb(location models.Location) error {
 	return err
 }
 
-// func (s *service) retrieveUser(deviceID string) []string {
-// 	deviceToken := []string{}
-// 	s.openFirestore()
-// 	docRef := s.FirestoreClient.Collection("users").WhereEq
-// 	tmpMap := make(map[string]interface{})
-// 	defer s.FirestoreClient.Close()
+func (s *service) retrieveDependents(userID string) []models.Dependents {
+	s.openFirestore()
+	listOfDependents := []models.Dependents{}
+	docRef := s.FirestoreClient.Collection("dependents").Where("userID", "==", userID)
+	defer s.FirestoreClient.Close()
 
-// 	snap, err := docRef.Get(context.Background())
-// 	if err != nil {
-// 		log.Fatalf("(5) Failed to get firestore data: %v", err)
-// 	}
+	documents, err := docRef.Documents(context.Background()).GetAll()
+	if err != nil {
+		log.Println(fmt.Sprintf("(7) failed to get firestore data: %v", err))
 
-// 	if err != nil {
-// 		log.Fatalf("Failed to get document: %v", err)
-// 	}
+		return listOfDependents
+	}
 
-// 	// Unmarshal the snapshot data into the user struct
-// 	if err := snap.DataTo(&tmpMap); err != nil {
-// 		log.Fatalf("Failed to unmarshal document data: %v", err)
-// 	}
+	// Iterate over the retrieved documents
+	for _, doc := range documents {
+		// fmt.Printf("Document ID: %s\n", doc.Ref.ID)
+		dependent := models.Dependents{}
+		if doc.Data()["dependentEmail"] != nil {
+			dependent.DependentEmail = doc.Data()["dependentEmail"].(string)
+		}
 
-// 	if tmpMap["deviceTokens"] != nil {
-// 		for _, rawData := range tmpMap["deviceTokens"].([]interface{}) {
-// 			if rawData.(map[string]interface{})["deviceToken"] != nil {
-// 				tmpStr := rawData.(map[string]interface{})["deviceToken"].(string)
-// 				deviceToken = append(deviceToken, tmpStr)
-// 			}
+		if doc.Data()["dependentName"] != nil {
+			dependent.DependentName = doc.Data()["dependentName"].(string)
+		}
 
-// 		}
-// 	}
+		if doc.Data()["dependentPhoneNumber"] != nil {
+			dependent.DependentPhoneNumber = doc.Data()["dependentPhoneNumber"].(string)
+		}
 
-// 	return deviceToken
-// }
+		if dependent.DependentEmail == "" {
+			continue
+		}
 
-func (s *service) retrieveDeviceToken(deviceID string) []string {
+		listOfDependents = append(listOfDependents, dependent)
+	}
+
+	return listOfDependents
+}
+
+func (s *service) retrieveDeviceToken(deviceID string) ([]string, []string) {
 	deviceToken := []string{}
+	users := []string{}
+	deviceUsers := make(map[string]interface{})
 	s.openFirestore()
 	docRef := s.FirestoreClient.Collection("deviceTokens").Doc(deviceID)
 	tmpMap := make(map[string]interface{})
@@ -125,13 +134,13 @@ func (s *service) retrieveDeviceToken(deviceID string) []string {
 
 	snap, err := docRef.Get(context.Background())
 	if err != nil {
-		log.Println(fmt.Sprintf("(5) Failed to get firestore data: %v", err))
-		return deviceToken
+		log.Println(fmt.Sprintf("(5) failed to get firestore data: %v", err))
+		return deviceToken, users
 	}
 
 	if err != nil {
-		log.Println(fmt.Sprintf("(6) Failed to get firestore data: %v", err))
-		return deviceToken
+		log.Println(fmt.Sprintf("(6) failed to get firestore data: %v", err))
+		return deviceToken, users
 	}
 
 	// Unmarshal the snapshot data into the user struct
@@ -146,15 +155,25 @@ func (s *service) retrieveDeviceToken(deviceID string) []string {
 				deviceToken = append(deviceToken, tmpStr)
 			}
 
+			if rawData.(map[string]interface{})["userID"] != nil {
+				tmpStr := rawData.(map[string]interface{})["userID"].(string)
+				deviceUsers[tmpStr] = nil
+			}
+
 		}
 	}
 
-	return deviceToken
+	for k := range deviceUsers {
+		users = append(users, k)
+	}
+
+	return deviceToken, users
 }
 
 func (s *service) SendMessage(location models.Location) error {
 	log.Println("SendMessage() invoked ...")
-	deviceToken := s.retrieveDeviceToken(location.SerialNumber)
+	deviceToken, deviceUsers := s.retrieveDeviceToken(location.SerialNumber)
+	s.getDependents(deviceUsers)
 	var errs error
 	for _, token := range deviceToken {
 		if token == "" {
@@ -181,24 +200,18 @@ func (s *service) SendMessage(location models.Location) error {
 	return errs
 }
 
-// createEmail creates a new email message.
-func createEmail(to, subject, body string) []byte {
-	message := fmt.Sprintf("To: %s\r\n"+
-		"Subject: %s\r\n"+
-		"\r\n"+
-		"%s\r\n", to, subject, body)
-
-	return []byte(message)
-}
-
-// sendEmail sends the email using SMTP and the provided app password.
-func sendEmail(senderEmail, appPassword string, email []byte) error {
-	auth := smtp.PlainAuth("", senderEmail, appPassword, "smtp.gmail.com")
-
-	err := smtp.SendMail("smtp.gmail.com:587", auth, senderEmail, []string{senderEmail}, email)
-	if err != nil {
-		return err
+func (s *service) getDependents(userIDs []string) {
+	allDependents := []models.Dependents{}
+	for _, id := range userIDs {
+		dependents := s.retrieveDependents(id)
+		if len(dependents) > 0 {
+			allDependents = append(allDependents, dependents...)
+		}
 	}
 
-	return nil
+	s.Dependents = allDependents
+}
+
+func (s *service) GetUpdatedDependents() []models.Dependents {
+	return s.Dependents
 }
