@@ -2,6 +2,7 @@ package routes
 
 import (
 	"encoding/json"
+	"fmt"
 	"goTrackingUserLocation/internal/common"
 	"goTrackingUserLocation/internal/email"
 	"goTrackingUserLocation/internal/localfirebase"
@@ -103,7 +104,7 @@ func (s *service) PostLocation(w http.ResponseWriter, r *http.Request) {
 				if len(dependents) > 0 {
 					for _, dependent := range dependents {
 						go func(dep models.Dependents) {
-							isSend, err := s.EmailService.SendEmail(dep.DependentEmail, common.EMAIL_SUBJECT, "You're registered as one of the dependents")
+							isSend, err := s.EmailService.SendEmail(dep.DependentEmail, fmt.Sprintf(common.ALARM_SUBJ, location.SerialNumber), fmt.Sprintf(common.ALARM_MSG, dep.DependentName, location.SerialNumber, location.SerialNumber, location.SerialNumber, common.EMAIL_ADDRESS, fmt.Sprintf(common.GOOGLE_MAP, location.Latitude, location.Longitude)))
 							if err != nil {
 								log.Println("Deoendent email: ", dep.DependentEmail)
 								log.Println("Email error: ", err)
@@ -134,6 +135,30 @@ func (s *service) updateFirebase(w http.ResponseWriter, location models.Location
 		response.Error(w, errorBuilder)
 		return
 	} else {
+		if common.HISTORY_COUNT == 0 {
+			common.HISTORY_COUNT = 10
+			common.HISTORY_DELETE_COUNT++
+			if common.HISTORY_DELETE_COUNT == 10 {
+				err := s.FirebaseService.RetrieveAndDeleteHistory(location.SerialNumber)
+				if err != nil {
+					log.Printf("error in retrieving and deleting history: %s", err.Error())
+				} else {
+					err := s.FirebaseService.WriteHistoryToDB(location)
+					if err != nil {
+						log.Printf("error in writing history: %s", err.Error())
+					}
+				}
+				common.HISTORY_DELETE_COUNT = 0
+			} else {
+				err := s.FirebaseService.WriteHistoryToDB(location)
+				if err != nil {
+					log.Printf("error in writing history: %s", err.Error())
+				}
+			}
+
+		} else {
+			common.HISTORY_COUNT--
+		}
 		log.Println("Successfully Updated Firebase")
 	}
 

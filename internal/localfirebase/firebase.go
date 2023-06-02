@@ -6,6 +6,7 @@ import (
 	"goTrackingUserLocation/internal/common"
 	"goTrackingUserLocation/internal/models"
 	"log"
+	"time"
 
 	"cloud.google.com/go/firestore"
 	firebase "firebase.google.com/go/v4"
@@ -19,6 +20,8 @@ type FirebaseIntf interface {
 	GetUpdatedDependents() []models.Dependents
 	WriteToDb(models.Location) error
 	SendMessage(models.Location) error
+	WriteHistoryToDB(location models.Location) error
+	RetrieveAndDeleteHistory(sn string) error
 }
 
 type service struct {
@@ -81,6 +84,56 @@ func (s *service) WriteToDb(location models.Location) error {
 		"lastCommunication": location.LastCommunication,
 	})
 
+	return err
+}
+
+func (s *service) WriteHistoryToDB(location models.Location) error {
+	s.openFirestore()
+	ref := s.FirestoreClient.Collection(common.HISTORY_REF)
+
+	_, _, err := ref.Add(context.Background(), location)
+	defer s.FirestoreClient.Close()
+	return err
+}
+
+func (s *service) RetrieveAndDeleteHistory(sn string) error {
+	var err error
+	ids := s.retrieveHistoryIds(sn)
+	for _, id := range ids {
+		err = s.deleteHistory(id)
+		if err != nil {
+			break
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return err
+}
+
+func (s *service) retrieveHistoryIds(sn string) []string {
+	s.openFirestore()
+	defer s.FirestoreClient.Close()
+	ids := []string{}
+	docRef := s.FirestoreClient.Collection("history").Where("SerialNumber", "==", sn)
+	documents, err := docRef.Documents(context.Background()).GetAll()
+	if err != nil {
+		log.Printf("error retrieving history: %s", err.Error())
+		return ids
+	}
+
+	for _, d := range documents {
+		ids = append(ids, d.Ref.ID)
+	}
+	return ids
+}
+
+func (s *service) deleteHistory(historyDocID string) error {
+	s.openFirestore()
+	docRef := s.FirestoreClient.Collection("history").Doc(historyDocID)
+	_, err := docRef.Delete(context.Background())
+	if err != nil {
+		log.Printf("error deleting history: %s", err.Error())
+	}
+	defer s.FirestoreClient.Close()
 	return err
 }
 

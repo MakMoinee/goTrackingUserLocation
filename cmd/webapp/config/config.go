@@ -25,4 +25,5 @@ func Set() {
 	common.EMAIL_APP_PASS = Registry.GetString("EMAIL_APP_PASS")
 	common.EMAIL_HOST = Registry.GetString("EMAIL_HOST")
 	common.EMAIL_SUBJECT = Registry.GetString("EMAIL_SUBJECT")
+	common.GOOGLE_MAP = Registry.GetString("GOOGLE_MAP")
 }

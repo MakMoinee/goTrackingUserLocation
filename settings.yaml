@@ -6,3 +6,6 @@ EMAIL_ADDRESS: "trackinguserapp.ph@gmail.com"
 EMAIL_APP_PASS: "pnqhstmvgyibpbgz"
 EMAIL_PORT: 587
 EMAIL_SUBJECT: "3J Distress App"
+
+#MAP
+GOOGLE_MAP: "https://www.google.com/maps/@%v,%v,16z?entry=ttu"
