@@ -198,7 +198,8 @@ func (s *service) retrieveDeviceToken(deviceID string) ([]string, []string) {
 
 	// Unmarshal the snapshot data into the user struct
 	if err := snap.DataTo(&tmpMap); err != nil {
-		log.Fatalf("Failed to unmarshal document data: %v", err)
+		log.Printf("Failed to unmarshal document data: %v", err)
+		return deviceToken, users
 	}
 
 	if tmpMap["deviceTokens"] != nil {
@@ -242,7 +243,7 @@ func (s *service) SendMessage(location models.Location) error {
 
 		data, err := s.MessageClient.Send(context.Background(), message)
 		if err != nil {
-			log.Fatalf("(4) Failed to send message: %v", err)
+			log.Printf("(4) Failed to send message: %v", err)
 			errs = err
 			break
 		}
